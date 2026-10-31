@@ -279,36 +279,70 @@ var ORBIT = (function () {
     for (var i = 0; i < 8; i++) { var a = rot + i * Math.PI / 4, rr = i % 2 ? o * 0.32 : o; var px = x + rr * Math.sin(a), py = y - rr * Math.cos(a); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
     ctx.closePath(); ctx.fill();
   }
-  // Telenoog Orbit look: gradient finder ring, faint orbit lines, sparkle marks, north star, glowing core
-  function draw(ctx, cx, cy, R, id) {
-    var bits = encodeBits(id);
+  // stadium (pill) path centred at 0,0, long axis vertical
+  function pill(ctx, L, W) {
+    var r = W / 2, h = L / 2 - r;
+    ctx.beginPath(); ctx.moveTo(-r, -h); ctx.arc(0, -h, r, Math.PI, 0); ctx.lineTo(r, h); ctx.arc(0, h, r, 0, Math.PI); ctx.closePath();
+  }
+  // vector approximation of the Telenoog loop mark (4 interlocking slanted loops), width w
+  function logoMark(ctx, w) {
+    var H = w / 3.2, g = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+    g.addColorStop(0, '#1BA3D9'); g.addColorStop(1, '#0A5E96');
+    ctx.strokeStyle = g; ctx.lineWidth = H * 0.13; ctx.lineJoin = 'round';
+    for (var i = 0; i < 4; i++) {
+      ctx.save(); ctx.translate(-w / 2 + H * 0.42 + i * (w - H * 0.84) / 3, 0); ctx.rotate((i % 2 ? -1 : 1) * 0.55);
+      pill(ctx, H * 1.12, H * 0.44); ctx.stroke(); ctx.restore();
+    }
+  }
+  var MARK_L = 0.084, MARK_W = 0.044, MARK_TILT = Math.PI / 4;
+  // Telenoog Orbit v2 look: futuristic halo of logo loops, gradient finder ring, woven link marks, logo core
+  function draw(ctx, cx, cy, R, id, logoImg) {
+    var bits = encodeBits(id), i, a;
     ctx.save(); ctx.translate(cx, cy);
-    var halo = ctx.createRadialGradient(0, 0, R * 0.9, 0, 0, R * 1.36);
+    var halo = ctx.createRadialGradient(0, 0, R * 0.9, 0, 0, R * 1.42);
     halo.addColorStop(0, '#E4F2FB'); halo.addColorStop(1, 'rgba(228,242,251,0)');
-    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, R * 1.36, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, R * 1.42, 0, 2 * Math.PI); ctx.fill();
+    // outer chain of logo loops (light, decorative)
+    ctx.strokeStyle = '#C3E5F6'; ctx.lineWidth = Math.max(1, R * 0.008);
+    for (i = 0; i < 28; i++) { a = i * 2 * Math.PI / 28; ctx.save(); ctx.rotate(a); ctx.translate(0, -R * 1.25); ctx.rotate((i % 2 ? -1 : 1) * 0.6); pill(ctx, R * 0.15, R * 0.06); ctx.stroke(); ctx.restore(); }
+    // HUD arcs + ticks
+    ctx.strokeStyle = '#B7E0F3'; ctx.lineWidth = Math.max(1, R * 0.012);
+    for (i = 0; i < 4; i++) { var a0 = i * Math.PI / 2 + 0.2; ctx.beginPath(); ctx.arc(0, 0, R * 1.12, a0, a0 + Math.PI / 2 - 0.4); ctx.stroke(); }
+    ctx.lineWidth = Math.max(1, R * 0.006);
+    for (i = 0; i < 72; i++) { a = i * Math.PI / 36; var t0 = i % 6 ? 1.37 : 1.34; ctx.beginPath(); ctx.moveTo(R * t0 * Math.sin(a), -R * t0 * Math.cos(a)); ctx.lineTo(R * 1.4 * Math.sin(a), -R * 1.4 * Math.cos(a)); ctx.stroke(); }
+    // field
     ctx.fillStyle = '#F7FBFE'; ctx.beginPath(); ctx.arc(0, 0, R * 0.95, 0, 2 * Math.PI); ctx.fill();
-    ctx.strokeStyle = '#D3E7F4'; ctx.lineWidth = Math.max(1, R * 0.006);
+    ctx.strokeStyle = '#DCEDF7'; ctx.lineWidth = Math.max(1, R * 0.005);
     RINGS.forEach(function (g) { ctx.beginPath(); ctx.arc(0, 0, g.r * R, 0, 2 * Math.PI); ctx.stroke(); });
+    // finder ring
     var lg = ctx.createLinearGradient(-R, -R, R, R);
     lg.addColorStop(0, '#0A3D66'); lg.addColorStop(0.5, '#0B7DC1'); lg.addColorStop(1, '#0A4F80');
     ctx.strokeStyle = lg; ctx.lineWidth = OUTER.t * R; ctx.beginPath(); ctx.arc(0, 0, OUTER.r * R, 0, 2 * Math.PI); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = Math.max(1, R * 0.006);
+    ctx.beginPath(); ctx.arc(0, 0, (OUTER.r + OUTER.t * 0.32) * R, -2.6, -1.9); ctx.stroke();
+    // inner orientation ring + north star
     var g2 = INNER.gap * Math.PI / 360;
     ctx.strokeStyle = '#0A4F80'; ctx.lineWidth = INNER.t * R; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.arc(0, 0, INNER.r * R, -Math.PI / 2 + g2 + 0.06, -Math.PI / 2 + 2 * Math.PI - g2 - 0.06); ctx.stroke(); ctx.lineCap = 'butt';
     ctx.fillStyle = '#F2CF7E'; sparkle(ctx, 0, -INNER.r * R, R * 0.05, 0);
+    // data: woven link marks, alternating slant per ring like the logo's loops
     var k = 0;
     RINGS.forEach(function (g, ri) {
-      for (var i = 0; i < g.n; i++, k++) {
+      for (var j = 0; j < g.n; j++, k++) {
         if (!bits[k]) continue;
-        var s = SLOTS[k], x = R * s.r * Math.sin(s.phi), y = -R * s.r * Math.cos(s.phi);
-        if (ri === 0) { ctx.fillStyle = '#0A4F80'; sparkle(ctx, x, y, DOT * R * 0.78, s.phi); }
-        else { ctx.fillStyle = ri % 2 ? '#0B2A4A' : '#0A5E96'; ctx.beginPath(); ctx.arc(x, y, DOT * R / 2, 0, 2 * Math.PI); ctx.fill(); }
+        var sl = SLOTS[k];
+        ctx.save(); ctx.rotate(sl.phi); ctx.translate(0, -R * sl.r); ctx.rotate(ri % 2 ? -MARK_TILT : MARK_TILT);
+        var mg = ctx.createLinearGradient(0, -MARK_L * R / 2, 0, MARK_L * R / 2);
+        mg.addColorStop(0, '#0B7DC1'); mg.addColorStop(1, '#0A3D66');
+        ctx.fillStyle = mg; pill(ctx, MARK_L * R, MARK_W * R); ctx.fill(); ctx.restore();
       }
     });
-    var cg = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.24);
-    cg.addColorStop(0, '#7FD3F2'); cg.addColorStop(1, '#1BA3D9');
-    ctx.fillStyle = cg; sparkle(ctx, 0, 0, R * 0.21, 0);
-    ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(0, 0, R * 0.03, 0, 2 * Math.PI); ctx.fill();
+    // core: Telenoog logo
+    var cg = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.3);
+    cg.addColorStop(0, '#FFFFFF'); cg.addColorStop(1, '#EAF6FC');
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(0, 0, R * 0.3, 0, 2 * Math.PI); ctx.fill();
+    if (logoImg) { var lw = R * 0.5, lh = lw * logoImg.height / logoImg.width; ctx.drawImage(logoImg, -lw / 2, -lh / 2, lw, lh); }
+    else logoMark(ctx, R * 0.5);
     ctx.restore();
   }
 
@@ -760,7 +794,7 @@ $('sample').addEventListener('click',function(){
   var ids=Object.keys(ROSTER),id=ids[sampleIdx++%ids.length];
   var c=document.createElement('canvas');c.width=900;c.height=900;var g=c.getContext('2d');g.fillStyle='#E9EEF3';g.fillRect(0,0,900,900);
   g.translate(450,450);g.rotate(Math.random()*Math.PI*2);g.transform(1,0,(Math.random()-.5)*0.5,0.65+Math.random()*0.3,0,0);
-  g.fillStyle='#fff';g.fillRect(-300,-300,600,600);ORBIT.draw(g,0,0,230,id);
+  g.fillStyle='#fff';g.fillRect(-300,-300,600,600);var li=document.querySelector('.brand img');ORBIT.draw(g,0,0,200,id,li&&li.naturalWidth?li:null);
   $('camErr').hidden=true;scanStill(c);
 });
 })();
